@@ -1,14 +1,77 @@
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+import com.bmuschko.gradle.docker.tasks.image.DockerPushImage
+import com.bmuschko.gradle.docker.tasks.image.DockerTagImage
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.bmuschko:gradle-docker-plugin:${gradle_docker_version}"
+    }
+}
+
 group 'com.smn.kafka.streams'
 version '1.0-SNAPSHOT'
 
 apply plugin: 'java'
+apply plugin: 'com.bmuschko.docker-remote-api'
 
 sourceCompatibility = 1.8
+targetCompatibility = 1.8
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    testCompile group: 'junit', name: 'junit', version: '4.12'
+    testCompile "junit:junit:${junit_version}"
+    compile "org.apache.kafka:kafka-streams:${kafka_version}"
 }
+
+jar {
+    baseName = "${project.name}"
+    version = "${project.version}"
+    manifest {
+        attributes 'Main-class': 'com.smn.kafka.streams.App'
+    }
+}
+
+def dockerBuildDir = "${buildDir}/docker"
+def dockerImageName = "naidusm/${project.archivesBaseName}"
+def dockerImageVersion = "latest"
+def dockerRepository = "https://hub.docker.com"
+
+docker {
+    registryCredentials {
+        url = dockerRepository
+        username = System.getenv('P_DOCKER_REGISTRY_USER')
+        password = System.getenv('P_DOCKER_REGISTRY_PASS')
+    }
+}
+
+task prepareDocker(type: Copy, dependsOn: jar) {
+    from libsDir
+    from "docker/"
+    into dockerBuildDir
+}
+
+task buildDockerImage(type: DockerBuildImage, dependsOn: prepareDocker) {
+    inputDir = file(dockerBuildDir)
+}
+
+task tagDockerImage(type: DockerTagImage, dependsOn: buildDockerImage) {
+    force = true
+    targetImageId { buildDockerImage.getImageId() }
+    tag = dockerImageVersion
+    repository = "${dockerImageName}"
+}
+
+task publishDockerImage(type: DockerPushImage, dependsOn: tagDockerImage) {
+    imageName = "${dockerImageName}"
+}
+
+
+
+
+
